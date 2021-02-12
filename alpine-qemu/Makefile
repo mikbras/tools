@@ -1,5 +1,5 @@
 join:
-	cat pieces/x* > alpine.qcow2.gz
+	cat x* > alpine.qcow2.gz
 
 split:
 	rm -rf pieces
