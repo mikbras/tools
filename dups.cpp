@@ -50,7 +50,10 @@ struct HashFunc
 typedef unordered_map<sha256_t, string, HashFunc> Map;
 typedef pair<sha256_t, string> Pair;
 
-static int _compute_file_hash(const string& path, sha256_t& hash)
+static int _compute_partial_file_hash(
+    const string& path,
+    size_t filesize,
+    sha256_t& hash)
 {
     int ret = 0;
     int fd = -1;
@@ -58,6 +61,53 @@ static int _compute_file_hash(const string& path, sha256_t& hash)
     SHA256_CTX ctx;
 
     SHA256_Init(&ctx);
+    SHA256_Update(&ctx, &filesize, sizeof(filesize));
+
+    if ((fd = open(path.c_str(), O_RDONLY, 0)) < 0)
+    {
+        ret = errno;
+        goto done;
+    }
+
+    for (;;)
+    {
+        ssize_t n = read(fd, buf, sizeof(buf));
+
+        if (n < 0)
+        {
+            ret = errno;
+            goto done;
+        }
+
+        if (n == 0)
+            break;
+
+        SHA256_Update(&ctx, buf, n);
+        break;
+    }
+
+    SHA256_Final(hash.buf, &ctx);
+
+done:
+
+    if (fd >= 0)
+        close(fd);
+
+    return ret;
+}
+
+static int _compute_full_file_hash(
+    const string& path,
+    size_t filesize,
+    sha256_t& hash)
+{
+    int ret = 0;
+    int fd = -1;
+    char buf[4096];
+    SHA256_CTX ctx;
+
+    SHA256_Init(&ctx);
+    SHA256_Update(&ctx, &filesize, sizeof(filesize));
 
     if ((fd = open(path.c_str(), O_RDONLY, 0)) < 0)
     {
@@ -99,7 +149,7 @@ static int _search(Map& map, const string& path)
 
     if (!(dir = opendir(path.c_str())))
     {
-        fprintf(stderr, "%s: warning: opendir() failed: %s\n", arg0, path.c_str());
+        //fprintf(stderr, "%s: warning: opendir() failed: %s\n", arg0, path.c_str());
         return 0;
         //exit(1);
     }
@@ -121,15 +171,15 @@ static int _search(Map& map, const string& path)
             exit(1);
         }
 
-        // Skip small files
-        if (statbuf.st_size < 4096)
+        // Skip zero-sized files
+        if (statbuf.st_size == 0)
             continue;
 
         if ((statbuf.st_mode & S_IFMT) == S_IFDIR)
             dirs.push_back(fullname);
         else
         {
-            if (_compute_file_hash(fullname.c_str(), hash) < 0)
+            if (_compute_partial_file_hash(fullname.c_str(), statbuf.st_size, hash) < 0)
             {
                 fprintf(stderr, "%s: hash failed: %s\n", arg0, fullname.c_str());
                 exit(1);
@@ -138,7 +188,43 @@ static int _search(Map& map, const string& path)
             Map::const_iterator p = map.find(hash);
 
             if (p != map.end())
-                printf("%s < %s\n", (*p).second.c_str(), fullname.c_str());
+            {
+                const string fullname2 = (*p).second;
+                struct stat statbuf2;
+
+                if (stat(fullname2.c_str(), &statbuf2) < 0)
+                {
+                    fprintf(stderr, "%s: stat failed: %s\n", arg0, fullname2.c_str());
+                    exit(1);
+                }
+
+                if (statbuf.st_size == statbuf2.st_size)
+                {
+                    sha256_t fullhash1;
+                    sha256_t fullhash2;
+
+                    if (_compute_full_file_hash(
+                        fullname.c_str(), statbuf.st_size, fullhash1) < 0)
+                    {
+                        fprintf(stderr, "%s: hash failed: %s\n",
+                            arg0, fullname.c_str());
+                        exit(1);
+                    }
+
+                    if (_compute_full_file_hash(
+                        fullname2.c_str(), statbuf2.st_size, fullhash2) < 0)
+                    {
+                        fprintf(stderr, "%s: hash failed: %s\n",
+                            arg0, fullname2.c_str());
+                        exit(1);
+                    }
+
+                    if (fullhash1 == fullhash2)
+                    {
+                        printf("%s:%s\n", fullname2.c_str(), fullname.c_str());
+                    }
+                }
+            }
 
             map.insert(Pair(hash, fullname));
         }
