@@ -161,20 +161,26 @@ static int _search(Map& map, const string& path)
 
         const string fullname = path + "/" + name;
 
-        if (stat(fullname.c_str(), &statbuf) < 0)
+        if (lstat(fullname.c_str(), &statbuf) < 0)
         {
             fprintf(stderr, "%s: stat failed: %s\n", arg0, fullname.c_str());
             exit(1);
         }
 
-        // Skip zero-sized files
-        if (statbuf.st_size == 0)
+        if (S_ISLNK(statbuf.st_mode))
+        {
+            // Skip symbolic links
             continue;
+        }
 
-        if ((statbuf.st_mode & S_IFMT) == S_IFDIR)
+        if (S_ISDIR(statbuf.st_mode))
             dirs.push_back(fullname);
         else
         {
+            // Skip zero-sized files
+            if (statbuf.st_size == 0)
+                continue;
+
             if (_compute_partial_file_hash(fullname.c_str(), statbuf.st_size, hash) < 0)
             {
                 fprintf(stderr, "%s: hash failed: %s\n", arg0, fullname.c_str());
