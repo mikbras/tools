@@ -175,7 +175,7 @@ static int _search(Map& map, const string& path)
 
         if (S_ISDIR(statbuf.st_mode))
             dirs.push_back(fullname);
-        else
+        else if (S_ISREG(statbuf.st_mode))
         {
             // Skip zero-sized files
             if (statbuf.st_size == 0)
