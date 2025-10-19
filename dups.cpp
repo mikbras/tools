@@ -96,10 +96,7 @@ done:
     return ret;
 }
 
-static int _compute_full_file_hash(
-    const string& path,
-    size_t filesize,
-    sha256_t& hash)
+static int _compute_full_file_hash(const string& path, sha256_t& hash)
 {
     int ret = 0;
     int fd = -1;
@@ -107,7 +104,6 @@ static int _compute_full_file_hash(
     SHA256_CTX ctx;
 
     SHA256_Init(&ctx);
-    SHA256_Update(&ctx, &filesize, sizeof(filesize));
 
     if ((fd = open(path.c_str(), O_RDONLY, 0)) < 0)
     {
@@ -204,15 +200,14 @@ static int _search(Map& map, const string& path)
                     sha256_t fullhash2;
 
                     if (_compute_full_file_hash(
-                        fullname.c_str(), statbuf.st_size, fullhash1) < 0)
+                        fullname.c_str(), fullhash1) < 0)
                     {
                         fprintf(stderr, "%s: hash failed: %s\n",
                             arg0, fullname.c_str());
                         exit(1);
                     }
 
-                    if (_compute_full_file_hash(
-                        fullname2.c_str(), statbuf2.st_size, fullhash2) < 0)
+                    if (_compute_full_file_hash(fullname2.c_str(), fullhash2) < 0)
                     {
                         fprintf(stderr, "%s: hash failed: %s\n",
                             arg0, fullname2.c_str());
