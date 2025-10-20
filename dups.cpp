@@ -137,7 +137,7 @@ done:
     return ret;
 }
 
-static int _search(Map& map, const string& path)
+static int _search(Map& map, FILE* stream, const string& path)
 {
     DIR* dir;
     struct dirent* ent;
@@ -225,6 +225,7 @@ static int _search(Map& map, const string& path)
                     if (fullhash1 == fullhash2)
                     {
                         printf("%s:%s\n", fullname2.c_str(), fullname.c_str());
+                        fprintf(stream, "%s:%s\n", fullname2.c_str(), fullname.c_str());
                     }
                 }
             }
@@ -237,7 +238,7 @@ static int _search(Map& map, const string& path)
 
     for (size_t i = 0; i < dirs.size(); i++)
     {
-        _search(map, dirs[i]);
+        _search(map, stream, dirs[i]);
     }
 
     return 0;
@@ -247,14 +248,25 @@ int main(int argc, const char* argv[])
 {
     arg0 = argv[0];
     Map map;
+    const char dups_log[] = "dups.log";
+    FILE* stream;
 
-    if (argc != 2)
+    if (argc < 2)
     {
-        fprintf(stderr, "Usage: %s <dirname>\n", arg0);
+        fprintf(stderr, "Usage: %s <dirname>...\n", arg0);
         exit(1);
     }
 
-    _search(map, argv[1]);
+    if (!(stream = fopen(dups_log, "wb")))
+    {
+        fprintf(stderr, "%s: cannot open: %s\n", arg0, dups_log);
+        exit(1);
+    }
+
+    for (int i = 1; i < argc; i++)
+        _search(map, stream, argv[i]);
+
+    fclose(stream);
 
     return 0;
 }
