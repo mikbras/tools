@@ -218,6 +218,7 @@ static void _put_log_line(
     fprintf(stream, "< %s\n", cached_fullname.c_str());
     fprintf(stream, "> %s\n\n", fullname.c_str());
     fprintf(stream, "%zu bytes\n\n", bytes);
+    fflush(stream);
 }
 
 static int _search(Context& c, const string& path)
