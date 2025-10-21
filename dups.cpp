@@ -201,8 +201,8 @@ static void _put_log_line(
     const string& cached_fullname,
     const string& fullname)
 {
-    fprintf(stderr, "< %s\n", cached_fullname.c_str());
-    fprintf(stderr, "> %s\n\n", fullname.c_str());
+    fprintf(stream, "< %s\n", cached_fullname.c_str());
+    fprintf(stream, "> %s\n\n", fullname.c_str());
 }
 
 static int _search(Map& map, FILE* stream, const string& path)
