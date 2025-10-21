@@ -50,6 +50,7 @@ struct HashFunc
 typedef unordered_map<sha256_t, string, HashFunc> Map;
 typedef pair<sha256_t, string> Pair;
 
+#if 0
 static int _compute_partial_file_hash(
     const string& path,
     size_t filesize,
@@ -95,12 +96,13 @@ done:
 
     return ret;
 }
+#endif
 
-static int _compute_full_file_hash(const string& path, sha256_t& hash)
+static int _compute_file_hash(const string& path, sha256_t& hash)
 {
     int ret = 0;
     int fd = -1;
-    char buf[4096];
+    char buf[BUFSIZ];
     SHA256_CTX ctx;
 
     SHA256_Init(&ctx);
@@ -137,6 +139,72 @@ done:
     return ret;
 }
 
+static int _compare_files(const char* path1, const char* path2)
+{
+    int ret = 0;
+    FILE* stream1 = NULL;
+    FILE* stream2 = NULL;
+    const size_t BUFFER_SIZE = 4096;
+    uint8_t buf1[BUFFER_SIZE];
+    uint8_t buf2[BUFFER_SIZE];
+
+
+    if (!(stream1 = fopen(path1, "rb")))
+    {
+        ret = -ENOENT;
+        goto done;
+    }
+
+    if (!(stream2 = fopen(path2, "rb")))
+    {
+        ret = -ENOENT;
+        goto done;
+    }
+
+    for (;;)
+    {
+        ssize_t n1 = fread(buf1, 1, BUFFER_SIZE, stream1);
+        ssize_t n2 = fread(buf2, 1, BUFFER_SIZE, stream2);
+
+        if (n1 != n2)
+        {
+            ret = -ENOENT;
+            goto done;
+        }
+
+        if (n1 == 0)
+        {
+            // Files are identical
+            break;
+        }
+
+        if (memcmp(buf1, buf2, n1) != 0)
+        {
+            ret = -ENOENT;
+            goto done;
+        }
+    }
+
+done:
+
+    if (stream1)
+        fclose(stream1);
+
+    if (stream2)
+        fclose(stream2);
+
+    return ret;
+}
+
+static void _put_log_line(
+    FILE* stream,
+    const string& cached_fullname,
+    const string& fullname)
+{
+    fprintf(stderr, "< %s\n", cached_fullname.c_str());
+    fprintf(stderr, "> %s\n\n", fullname.c_str());
+}
+
 static int _search(Map& map, FILE* stream, const string& path)
 {
     DIR* dir;
@@ -152,9 +220,8 @@ static int _search(Map& map, FILE* stream, const string& path)
 
     while ((ent = readdir(dir)))
     {
-        string name = ent->d_name;
+        const string name = ent->d_name;
         struct stat statbuf;
-        sha256_t hash;
 
         if (name == "." || name == "..")
             continue;
@@ -167,23 +234,19 @@ static int _search(Map& map, FILE* stream, const string& path)
             exit(1);
         }
 
-        if (S_ISLNK(statbuf.st_mode))
-        {
-            // Skip symbolic links
-            continue;
-        }
-
         if (S_ISDIR(statbuf.st_mode))
         {
             dirs.push_back(fullname);
         }
         else if (S_ISREG(statbuf.st_mode))
         {
+            sha256_t hash;
+
             // Skip zero-sized files
             if (statbuf.st_size == 0)
                 continue;
 
-            if (_compute_partial_file_hash(fullname.c_str(), statbuf.st_size, hash) < 0)
+            if (_compute_file_hash(fullname.c_str(), hash) < 0)
             {
                 fprintf(stderr, "%s: hash failed: %s\n", arg0, fullname.c_str());
                 exit(1);
@@ -193,44 +256,30 @@ static int _search(Map& map, FILE* stream, const string& path)
 
             if (p != map.end())
             {
-                const string fullname2 = (*p).second;
-                struct stat statbuf2;
+                const string cached_fullname = (*p).second;
 
-                if (stat(fullname2.c_str(), &statbuf2) < 0)
+                if (_compare_files(
+                    cached_fullname.c_str(), fullname.c_str()) < 0)
                 {
-                    fprintf(stderr, "%s: stat failed: %s\n", arg0, fullname2.c_str());
+                    fprintf(stderr,
+                        "%s: unexpected: files not idential: %s %s\n",
+                        arg0, cached_fullname.c_str(), fullname.c_str());
                     exit(1);
                 }
 
-                if (statbuf.st_size == statbuf2.st_size)
-                {
-                    sha256_t fullhash1;
-                    sha256_t fullhash2;
-
-                    if (_compute_full_file_hash(
-                        fullname.c_str(), fullhash1) < 0)
-                    {
-                        fprintf(stderr, "%s: hash failed: %s\n",
-                            arg0, fullname.c_str());
-                        exit(1);
-                    }
-
-                    if (_compute_full_file_hash(fullname2.c_str(), fullhash2) < 0)
-                    {
-                        fprintf(stderr, "%s: hash failed: %s\n",
-                            arg0, fullname2.c_str());
-                        exit(1);
-                    }
-
-                    if (fullhash1 == fullhash2)
-                    {
-                        printf("%s:%s\n", fullname2.c_str(), fullname.c_str());
-                        fprintf(stream, "%s:%s\n", fullname2.c_str(), fullname.c_str());
-                    }
-                }
+                _put_log_line(stdout, cached_fullname, fullname);
+                _put_log_line(stream, cached_fullname, fullname);
             }
-
-            map.insert(Pair(hash, fullname));
+            else
+            {
+                // Only add file with these contents once
+                map.insert(Pair(hash, fullname));
+            }
+        }
+        else
+        {
+            // Skip other file types
+            continue;
         }
     }
 
