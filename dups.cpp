@@ -56,11 +56,12 @@ typedef pair<uint32_t, string> Pair;
 class Context
 {
 public:
+    size_t min_size;
     FILE* stream;
     size_t bytes;
     Map map;
 
-    Context() : stream(nullptr), bytes(0)
+    Context() : min_size((size_t)-1), stream(nullptr), bytes(0)
     {
     }
 };
@@ -306,6 +307,10 @@ static int _search(Context& c, const string& path)
             // Skip zero-sized files
             if (size == 0)
                 continue;
+
+            if (size <= c.min_size)
+                continue;
+
             if (_compute_partial_file_crc(fullname.c_str(), size, crc) < 0)
             {
                 fprintf(stderr, "%s: crc computation failed: %s\n",
@@ -370,6 +375,7 @@ int main(int argc, const char* argv[])
     }
 
     c.stream = stream;
+    //c.min_size = 1024*1024;
 
     for (int i = 1; i < argc; i++)
         _search(c, argv[i]);
