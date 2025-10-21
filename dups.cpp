@@ -61,7 +61,7 @@ public:
     size_t bytes;
     Map map;
 
-    Context() : min_size((size_t)-1), stream(nullptr), bytes(0)
+    Context() : min_size(0), stream(nullptr), bytes(0)
     {
     }
 };
