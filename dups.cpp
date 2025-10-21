@@ -10,7 +10,9 @@
 #include <lzma.h>
 #include <sys/stat.h>
 #include <vector>
+#if 0
 #include <openssl/sha.h>
+#endif
 #include <unordered_map>
 
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -48,8 +50,8 @@ struct HashFunc
     }
 };
 
-typedef unordered_map<sha256_t, string, HashFunc> Map;
-typedef pair<sha256_t, string> Pair;
+typedef unordered_map<uint32_t, string> Map;
+typedef pair<uint32_t, string> Pair;
 
 class Context
 {
@@ -63,6 +65,7 @@ public:
     }
 };
 
+#if 0
 static int _compute_partial_file_hash(
     const string& path,
     size_t filesize,
@@ -108,8 +111,8 @@ done:
 
     return ret;
 }
+#endif
 
-__attribute__((__unused__))
 static int _compute_partial_file_crc(
     const string& path,
     size_t filesize,
@@ -117,7 +120,7 @@ static int _compute_partial_file_crc(
 {
     int ret = 0;
     int fd = -1;
-    uint8_t buf[4096];
+    uint8_t buf[BUFSIZ];
 
     crc = lzma_crc32((const uint8_t*)&filesize, sizeof(filesize), 0);
 
@@ -272,9 +275,7 @@ static int _search(Context& c, const string& path)
 
     if (!(dir = opendir(path.c_str())))
     {
-        //fprintf(stderr, "%s: warning: opendir() failed: %s\n", arg0, path.c_str());
         return 0;
-        //exit(1);
     }
 
     while ((ent = readdir(dir)))
@@ -299,20 +300,20 @@ static int _search(Context& c, const string& path)
         }
         else if (S_ISREG(statbuf.st_mode))
         {
-            sha256_t hash;
+            uint32_t crc;
             const size_t size = statbuf.st_size;
 
             // Skip zero-sized files
             if (size == 0)
                 continue;
-
-            if (_compute_partial_file_hash(fullname.c_str(), size, hash) < 0)
+            if (_compute_partial_file_crc(fullname.c_str(), size, crc) < 0)
             {
-                fprintf(stderr, "%s: hash failed: %s\n", arg0, fullname.c_str());
+                fprintf(stderr, "%s: crc computation failed: %s\n",
+                    arg0, fullname.c_str());
                 exit(1);
             }
 
-            Map::const_iterator p = c.map.find(hash);
+            Map::const_iterator p = c.map.find(crc);
 
             if (p != c.map.end())
             {
@@ -328,7 +329,7 @@ static int _search(Context& c, const string& path)
             else
             {
                 // Only add file with these contents once
-                c.map.insert(Pair(hash, fullname));
+                c.map.insert(Pair(crc, fullname));
             }
         }
         else
