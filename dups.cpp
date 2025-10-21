@@ -7,6 +7,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <lzma.h>
 #include <sys/stat.h>
 #include <vector>
 #include <openssl/sha.h>
@@ -62,8 +63,6 @@ public:
     }
 };
 
-
-#if 0
 static int _compute_partial_file_hash(
     const string& path,
     size_t filesize,
@@ -109,8 +108,51 @@ done:
 
     return ret;
 }
-#endif
 
+__attribute__((__unused__))
+static int _compute_partial_file_crc(
+    const string& path,
+    size_t filesize,
+    uint32_t& crc)
+{
+    int ret = 0;
+    int fd = -1;
+    uint8_t buf[4096];
+
+    crc = lzma_crc32((const uint8_t*)&filesize, sizeof(filesize), 0);
+
+    if ((fd = open(path.c_str(), O_RDONLY, 0)) < 0)
+    {
+        ret = errno;
+        goto done;
+    }
+
+    for (;;)
+    {
+        ssize_t n = read(fd, buf, sizeof(buf));
+
+        if (n < 0)
+        {
+            ret = errno;
+            goto done;
+        }
+
+        if (n == 0)
+            break;
+
+        crc = lzma_crc32((uint8_t*)buf, n, crc);
+        break;
+    }
+
+done:
+
+    if (fd >= 0)
+        close(fd);
+
+    return ret;
+}
+
+#if 0
 static int _compute_file_hash(const string& path, sha256_t& hash)
 {
     int ret = 0;
@@ -151,8 +193,9 @@ done:
 
     return ret;
 }
+#endif
 
-static int _compare_files(const char* path1, const char* path2)
+static int _compare_files(const string& path1, const string& path2)
 {
     int ret = 0;
     FILE* stream1 = NULL;
@@ -162,13 +205,13 @@ static int _compare_files(const char* path1, const char* path2)
     uint8_t buf2[BUFFER_SIZE];
 
 
-    if (!(stream1 = fopen(path1, "rb")))
+    if (!(stream1 = fopen(path1.c_str(), "rb")))
     {
         ret = -ENOENT;
         goto done;
     }
 
-    if (!(stream2 = fopen(path2, "rb")))
+    if (!(stream2 = fopen(path2.c_str(), "rb")))
     {
         ret = -ENOENT;
         goto done;
@@ -257,12 +300,13 @@ static int _search(Context& c, const string& path)
         else if (S_ISREG(statbuf.st_mode))
         {
             sha256_t hash;
+            const size_t size = statbuf.st_size;
 
             // Skip zero-sized files
-            if (statbuf.st_size == 0)
+            if (size == 0)
                 continue;
 
-            if (_compute_file_hash(fullname.c_str(), hash) < 0)
+            if (_compute_partial_file_hash(fullname.c_str(), size, hash) < 0)
             {
                 fprintf(stderr, "%s: hash failed: %s\n", arg0, fullname.c_str());
                 exit(1);
@@ -274,19 +318,12 @@ static int _search(Context& c, const string& path)
             {
                 const string cached_fullname = (*p).second;
 
-                if (_compare_files(
-                    cached_fullname.c_str(), fullname.c_str()) < 0)
+                if (_compare_files(cached_fullname, fullname) == 0)
                 {
-                    fprintf(stderr,
-                        "%s: unexpected: files not idential: %s %s\n",
-                        arg0, cached_fullname.c_str(), fullname.c_str());
-                    exit(1);
+                    c.bytes += size;
+                    _put_log_line(stdout, cached_fullname, fullname, c.bytes);
+                    _put_log_line(c.stream, cached_fullname, fullname, c.bytes);
                 }
-
-                c.bytes += statbuf.st_size;
-
-                _put_log_line(stdout, cached_fullname, fullname, c.bytes);
-                _put_log_line(c.stream, cached_fullname, fullname, c.bytes);
             }
             else
             {
