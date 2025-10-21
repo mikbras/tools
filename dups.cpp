@@ -50,6 +50,19 @@ struct HashFunc
 typedef unordered_map<sha256_t, string, HashFunc> Map;
 typedef pair<sha256_t, string> Pair;
 
+class Context
+{
+public:
+    FILE* stream;
+    size_t bytes;
+    Map map;
+
+    Context() : stream(nullptr), bytes(0)
+    {
+    }
+};
+
+
 #if 0
 static int _compute_partial_file_hash(
     const string& path,
@@ -199,13 +212,15 @@ done:
 static void _put_log_line(
     FILE* stream,
     const string& cached_fullname,
-    const string& fullname)
+    const string& fullname,
+    size_t bytes)
 {
     fprintf(stream, "< %s\n", cached_fullname.c_str());
     fprintf(stream, "> %s\n\n", fullname.c_str());
+    fprintf(stream, "%zu bytes\n\n", bytes);
 }
 
-static int _search(Map& map, FILE* stream, const string& path)
+static int _search(Context& c, const string& path)
 {
     DIR* dir;
     struct dirent* ent;
@@ -252,9 +267,9 @@ static int _search(Map& map, FILE* stream, const string& path)
                 exit(1);
             }
 
-            Map::const_iterator p = map.find(hash);
+            Map::const_iterator p = c.map.find(hash);
 
-            if (p != map.end())
+            if (p != c.map.end())
             {
                 const string cached_fullname = (*p).second;
 
@@ -267,13 +282,15 @@ static int _search(Map& map, FILE* stream, const string& path)
                     exit(1);
                 }
 
-                _put_log_line(stdout, cached_fullname, fullname);
-                _put_log_line(stream, cached_fullname, fullname);
+                c.bytes += statbuf.st_size;
+
+                _put_log_line(stdout, cached_fullname, fullname, c.bytes);
+                _put_log_line(c.stream, cached_fullname, fullname, c.bytes);
             }
             else
             {
                 // Only add file with these contents once
-                map.insert(Pair(hash, fullname));
+                c.map.insert(Pair(hash, fullname));
             }
         }
         else
@@ -287,7 +304,7 @@ static int _search(Map& map, FILE* stream, const string& path)
 
     for (size_t i = 0; i < dirs.size(); i++)
     {
-        _search(map, stream, dirs[i]);
+        _search(c, dirs[i]);
     }
 
     return 0;
@@ -299,6 +316,7 @@ int main(int argc, const char* argv[])
     Map map;
     const char dups_log[] = "dups.log";
     FILE* stream;
+    Context c;
 
     if (argc < 2)
     {
@@ -312,8 +330,10 @@ int main(int argc, const char* argv[])
         exit(1);
     }
 
+    c.stream = stream;
+
     for (int i = 1; i < argc; i++)
-        _search(map, stream, argv[i]);
+        _search(c, argv[i]);
 
     fclose(stream);
 
