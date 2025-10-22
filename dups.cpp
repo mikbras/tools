@@ -61,10 +61,11 @@ public:
     size_t min_size;
     FILE* stream;
     size_t bytes;
+    size_t num_collisions;
     Map map;
     vector<pair<string,string>> hard_links;
 
-    Context() : min_size(0), stream(nullptr), bytes(0)
+    Context() : min_size(0), stream(nullptr), bytes(0), num_collisions(0)
     {
     }
 };
@@ -271,6 +272,16 @@ static void _put_log_line(
     fflush(stream);
 }
 
+static void _put_summary(const Context& c, FILE* stream)
+{
+    const size_t MEGABYTE = 1024 * 1024;
+    const size_t GIGABYTE = 1024 * 1024 * 1024;
+    fprintf(stream, "Wasted bytes: %zu\n", c.bytes);
+    fprintf(stream, "Wasted megabytes: %zuM\n", c.bytes / MEGABYTE);
+    fprintf(stream, "Wasted gigabytes: %zuG\n", c.bytes / GIGABYTE);
+    fprintf(stream, "Total collisions: %zu\n", c.num_collisions);
+}
+
 static int _search(Context& c, const string& path)
 {
     DIR* dir;
@@ -352,8 +363,7 @@ static int _search(Context& c, const string& path)
                     }
                     else
                     {
-                        printf("**** Collision: %s %s\n",
-                            cached_fullname.c_str(), fullname.c_str());
+                        c.num_collisions++;
                     }
                 }
             }
@@ -491,6 +501,8 @@ int main(int argc, const char* argv[])
         }
     }
 
+    _put_summary(c, stdout);
+    _put_summary(c, c.stream);
     fclose(stream);
 
     return 0;
