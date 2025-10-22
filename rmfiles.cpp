@@ -38,7 +38,7 @@ int main(int argc, const char* argv[])
         while (p != line && isspace(p[-1]))
             *--p = '\0';
 
-        printf("line{%s}\n", line);
+        printf("Removing %s...\n", line);
 
         if (unlink(line) < 0)
         {
