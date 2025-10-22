@@ -260,14 +260,14 @@ done:
 }
 
 static void _put_log_line(
+    const Context& c,
     FILE* stream,
     const string& cached_fullname,
-    const string& fullname,
-    size_t bytes)
+    const string& fullname)
 {
     fprintf(stream, "< %s\n", cached_fullname.c_str());
     fprintf(stream, "> %s\n", fullname.c_str());
-    fprintf(stream, "%zu bytes\n\n", bytes);
+    fprintf(stream, "%zu bytes\n\n", c.bytes);
     fflush(stream);
 }
 
@@ -335,25 +335,31 @@ static int _search(Context& c, const string& path)
                     exit(1);
                 }
 
-                if (cached_statbuf.st_ino != statbuf.st_ino &&
-                    _compare_files(cached_fullname, fullname) == 0)
+                if (cached_statbuf.st_ino != statbuf.st_ino)
                 {
-                    c.bytes += size;
-                    _put_log_line(stdout, cached_fullname, fullname, c.bytes);
-                    _put_log_line(
-                        c.stream, cached_fullname, fullname, c.bytes);
-
-                    if (_make_hard_links)
+                    if (_compare_files(cached_fullname, fullname) == 0)
                     {
-                        c.hard_links.push_back(
-                            pair<string,string>(cached_fullname, fullname));
-                    }
+                        c.bytes += size;
+                        _put_log_line(c, stdout, cached_fullname, fullname);
+                        _put_log_line(c, c.stream, cached_fullname, fullname);
 
+                        if (_make_hard_links)
+                        {
+                            c.hard_links.push_back(
+                                pair<string,string>(cached_fullname, fullname));
+                        }
+
+                    }
+                    else
+                    {
+                        printf("**** Collision: %s %s\n",
+                            cached_fullname.c_str(), fullname.c_str());
+                    }
                 }
             }
             else
             {
-                // Only add file with these contents once
+                // Only add file with this CRC once
                 c.map.insert(Pair(crc, fullname));
             }
         }
