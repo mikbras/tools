@@ -354,6 +354,8 @@ static int _search(Context& c, const string& path)
     return 0;
 }
 
+#define USAGE "Usage: %s [-f min-size] <dirname>...\n"
+
 int main(int argc, const char* argv[])
 {
     arg0 = argv[0];
@@ -361,10 +363,62 @@ int main(int argc, const char* argv[])
     const char dups_log[] = "dups.log";
     FILE* stream;
     Context c;
+    int opt;
+
+    while ((opt = getopt(argc, (char**)argv, "m:")) != -1)
+    {
+        switch (opt)
+        {
+            case 'm':
+            {
+                const char* arg = optarg;
+                size_t len = strlen(arg);
+
+                if (len == 0)
+                {
+                    fprintf(stderr, "%s: bad -m arg\n", arg0);
+                    exit(0);
+                }
+
+                if (arg[len-1] == 'M')
+                {
+                    const char* p = &arg[len-1];
+                    char* end = NULL;
+                    c.min_size = strtoul(arg, &end, 10);
+
+                    if (!end || end != p)
+                    {
+                        fprintf(stderr, "%s: bad -m arg\n", arg0);
+                        exit(0);
+                    }
+
+                    c.min_size *= 1024 * 1024;
+                }
+                else
+                {
+                    char* end = NULL;
+                    c.min_size = strtoul(arg, &end, 10);
+
+                    if (!end || *end)
+                    {
+                        fprintf(stderr, "%s: bad -m arg\n", arg0);
+                        exit(0);
+                    }
+                }
+
+                break;
+            }
+            default:
+            {
+                fprintf(stderr, USAGE, arg0);
+                exit(1);
+            }
+        }
+    }
 
     if (argc < 2)
     {
-        fprintf(stderr, "Usage: %s <dirname>...\n", arg0);
+        fprintf(stderr, USAGE, arg0);
         exit(1);
     }
 
