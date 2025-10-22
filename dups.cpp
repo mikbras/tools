@@ -21,8 +21,6 @@ using namespace std;
 
 const char* arg0;
 
-static bool _make_hard_links;
-
 typedef struct
 {
     union
@@ -58,14 +56,25 @@ typedef pair<uint32_t, string> Pair;
 class Context
 {
 public:
+    bool opt_hard_links;
+    bool opt_identical;
+
     size_t min_size;
     FILE* stream;
     size_t bytes;
+    size_t num_duplicates;
     size_t num_collisions;
     Map map;
     vector<pair<string,string>> hard_links;
 
-    Context() : min_size(0), stream(nullptr), bytes(0), num_collisions(0)
+    Context() :
+        opt_hard_links(false),
+        opt_identical(false),
+        min_size(0),
+        stream(nullptr),
+        bytes(0),
+        num_duplicates(0),
+        num_collisions(0)
     {
     }
 };
@@ -260,23 +269,34 @@ done:
     return ret;
 }
 
-static void _put_log_line(
-    const Context& c,
+static void _log_duplicates(
     FILE* stream,
-    const string& cached_fullname,
-    const string& fullname)
+    const string& path1,
+    const string& path2)
 {
-    fprintf(stream, "< %s\n", cached_fullname.c_str());
-    fprintf(stream, "> %s\n", fullname.c_str());
-    fprintf(stream, "%zu bytes\n\n", c.bytes);
+    fprintf(stream, "< %s\n", path1.c_str());
+    fprintf(stream, "> %s\n", path2.c_str());
+    fprintf(stream, "\n");
     fflush(stream);
 }
 
-static void _put_summary(const Context& c, FILE* stream)
+static void _log_identicals(
+    FILE* stream,
+    const string& path1,
+    const string& path2)
+{
+    fprintf(stream, "[ %s\n", path1.c_str());
+    fprintf(stream, "] %s\n", path2.c_str());
+    fprintf(stream, "\n");
+    fflush(stream);
+}
+
+static void _log_summary(const Context& c, FILE* stream)
 {
     const double GIGABYTE = (1024 * 1024 * 1024);
+    fprintf(stream, "Duplicates: %zu\n", c.num_duplicates);
+    fprintf(stream, "Collisions: %zu\n", c.num_collisions);
     fprintf(stream, "Duplicate space: %.3lfG\n", c.bytes / GIGABYTE);
-    fprintf(stream, "Total collisions: %zu\n", c.num_collisions);
 }
 
 static int _search(Context& c, const string& path)
@@ -343,20 +363,29 @@ static int _search(Context& c, const string& path)
                     exit(1);
                 }
 
-                if (cached_statbuf.st_ino != statbuf.st_ino)
+                if (cached_statbuf.st_ino == statbuf.st_ino)
+                {
+                    if (c.opt_identical)
+                    {
+                        _log_identicals(c.stream, cached_fullname, fullname);
+                        _log_identicals(stdout, cached_fullname, fullname);
+                    }
+                }
+                else
                 {
                     if (_compare_files(cached_fullname, fullname) == 0)
                     {
                         c.bytes += size;
-                        _put_log_line(c, stdout, cached_fullname, fullname);
-                        _put_log_line(c, c.stream, cached_fullname, fullname);
+                        _log_duplicates(stdout, cached_fullname, fullname);
+                        _log_duplicates(c.stream, cached_fullname, fullname);
 
-                        if (_make_hard_links)
+                        if (c.opt_hard_links)
                         {
                             c.hard_links.push_back(
                                 pair<string,string>(cached_fullname, fullname));
                         }
 
+                        c.num_duplicates++;
                     }
                     else
                     {
@@ -387,7 +416,15 @@ static int _search(Context& c, const string& path)
     return 0;
 }
 
-#define USAGE "Usage: %s [-m min-size | -h] <dirname>...\n"
+#define USAGE "\
+Usage: %s [-m min-size | -h] <dirname>...\n\
+\n\
+Options:\n\
+    -m min-size         -- consider only files greater than min-size\n\
+    -h                  -- replace duplicate files with hard links\n\
+    -i                  -- show identical files\n\
+\n\
+"
 
 int main(int argc, const char* argv[])
 {
@@ -398,7 +435,7 @@ int main(int argc, const char* argv[])
     Context c;
     int opt;
 
-    while ((opt = getopt(argc, (char**)argv, "hm:")) != -1)
+    while ((opt = getopt(argc, (char**)argv, "ihm:")) != -1)
     {
         switch (opt)
         {
@@ -443,7 +480,12 @@ int main(int argc, const char* argv[])
             }
             case 'h':
             {
-                _make_hard_links = true;
+                c.opt_hard_links = true;
+                break;
+            }
+            case 'i':
+            {
+                c.opt_identical = true;
                 break;
             }
             default:
@@ -472,14 +514,17 @@ int main(int argc, const char* argv[])
     for (int i = 1; i < argc; i++)
         _search(c, argv[i]);
 
-    if (_make_hard_links)
+    if (c.opt_hard_links)
     {
+        fprintf(c.stream, "Unlinking %zu files...\n", c.hard_links.size());
+        fprintf(stdout, "Unlinking %zu files...\n", c.hard_links.size());
+
         for (size_t i = 0; i < c.hard_links.size(); i++)
         {
             string first = c.hard_links[i].first;
             string second = c.hard_links[i].second;
 
-            printf("unlink %s\n", second.c_str());
+            //printf("unlink %s\n", second.c_str());
 
             if (unlink(second.c_str()) < 0)
             {
@@ -488,7 +533,7 @@ int main(int argc, const char* argv[])
                 exit(1);
             }
 
-            printf("link %s %s\n", first.c_str(), second.c_str());
+            //printf("link %s %s\n", first.c_str(), second.c_str());
 
             if (link(first.c_str(), second.c_str()) < 0)
             {
@@ -498,8 +543,8 @@ int main(int argc, const char* argv[])
         }
     }
 
-    _put_summary(c, stdout);
-    _put_summary(c, c.stream);
+    _log_summary(c, stdout);
+    _log_summary(c, c.stream);
     fclose(stream);
 
     return 0;
