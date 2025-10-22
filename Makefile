@@ -1,6 +1,7 @@
 CFLAGS = -Wall -Werror
 all:
 	g++ $(CFLAGS) -o dups dups.cpp -llzma
+	g++ $(CFLAGS) -o rmfiles rmfiles.cpp -llzma
 
 clean:
 	rm dups
