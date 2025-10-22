@@ -274,11 +274,8 @@ static void _put_log_line(
 
 static void _put_summary(const Context& c, FILE* stream)
 {
-    const size_t MEGABYTE = 1024 * 1024;
-    const size_t GIGABYTE = 1024 * 1024 * 1024;
-    fprintf(stream, "Wasted bytes: %zu\n", c.bytes);
-    fprintf(stream, "Wasted megabytes: %zuM\n", c.bytes / MEGABYTE);
-    fprintf(stream, "Wasted gigabytes: %zuG\n", c.bytes / GIGABYTE);
+    const double GIGABYTE = (1024 * 1024 * 1024);
+    fprintf(stream, "Duplicate space: %.3lfG\n", c.bytes / GIGABYTE);
     fprintf(stream, "Total collisions: %zu\n", c.num_collisions);
 }
 
