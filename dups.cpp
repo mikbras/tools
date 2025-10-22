@@ -62,6 +62,7 @@ public:
     FILE* stream;
     size_t bytes;
     Map map;
+    vector<pair<string,string>> hard_links;
 
     Context() : min_size(0), stream(nullptr), bytes(0)
     {
@@ -266,10 +267,6 @@ static void _put_log_line(
 {
     fprintf(stream, "< %s\n", cached_fullname.c_str());
     fprintf(stream, "> %s\n", fullname.c_str());
-
-    if (_make_hard_links)
-        fprintf(stream, "+ Created hardlink\n");
-
     fprintf(stream, "%zu bytes\n\n", bytes);
     fflush(stream);
 }
@@ -342,28 +339,16 @@ static int _search(Context& c, const string& path)
                     _compare_files(cached_fullname, fullname) == 0)
                 {
                     c.bytes += size;
-
-                    if (_make_hard_links)
-                    {
-                        if (unlink(fullname.c_str()) < 0)
-                        {
-                            fprintf(stderr, "%s: unlink failed: %s\n",
-                                arg0, fullname.c_str());
-                            exit(1);
-                        }
-
-                        if (link(
-                            cached_fullname.c_str(), fullname.c_str()) < 0)
-                        {
-                            fprintf(stderr, "%s: unlink failed: %s\n",
-                                arg0, fullname.c_str());
-                            exit(1);
-                        }
-                    }
-
                     _put_log_line(stdout, cached_fullname, fullname, c.bytes);
                     _put_log_line(
                         c.stream, cached_fullname, fullname, c.bytes);
+
+                    if (_make_hard_links)
+                    {
+                        c.hard_links.push_back(
+                            pair<string,string>(cached_fullname, fullname));
+                    }
+
                 }
             }
             else
@@ -473,6 +458,32 @@ int main(int argc, const char* argv[])
 
     for (int i = 1; i < argc; i++)
         _search(c, argv[i]);
+
+    if (_make_hard_links)
+    {
+        for (size_t i = 0; i < c.hard_links.size(); i++)
+        {
+            string first = c.hard_links[i].first;
+            string second = c.hard_links[i].second;
+
+            printf("unlink %s\n", second.c_str());
+
+            if (unlink(second.c_str()) < 0)
+            {
+                fprintf(stderr, "%s: unlink failed: %s\n",
+                    arg0, second.c_str());
+                exit(1);
+            }
+
+            printf("link %s %s\n", first.c_str(), second.c_str());
+
+            if (link(first.c_str(), second.c_str()) < 0)
+            {
+                fprintf(stderr, "%s: unlink failed: %s\n", arg0, first.c_str());
+                exit(1);
+            }
+        }
+    }
 
     fclose(stream);
 
