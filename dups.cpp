@@ -21,6 +21,8 @@ using namespace std;
 
 const char* arg0;
 
+static bool _make_hard_links;
+
 typedef struct
 {
     union
@@ -263,7 +265,7 @@ static void _put_log_line(
     size_t bytes)
 {
     fprintf(stream, "< %s\n", cached_fullname.c_str());
-    fprintf(stream, "> %s\n\n", fullname.c_str());
+    fprintf(stream, "> %s\n", fullname.c_str());
     fprintf(stream, "%zu bytes\n\n", bytes);
     fflush(stream);
 }
@@ -323,12 +325,40 @@ static int _search(Context& c, const string& path)
             if (p != c.map.end())
             {
                 const string cached_fullname = (*p).second;
+                struct stat cached_statbuf;
 
-                if (_compare_files(cached_fullname, fullname) == 0)
+                if (lstat(cached_fullname.c_str(), &cached_statbuf) < 0)
+                {
+                    fprintf(stderr, "%s: stat failed: %s\n",
+                        arg0, cached_fullname.c_str());
+                    exit(1);
+                }
+
+                if (cached_statbuf.st_ino != statbuf.st_ino &&
+                    _compare_files(cached_fullname, fullname) == 0)
                 {
                     c.bytes += size;
                     _put_log_line(stdout, cached_fullname, fullname, c.bytes);
                     _put_log_line(c.stream, cached_fullname, fullname, c.bytes);
+
+                    if (_make_hard_links)
+                    {
+                        if (unlink(fullname.c_str()) < 0)
+                        {
+                            fprintf(stderr, "%s: unlink failed: %s\n",
+                                arg0, fullname.c_str());
+                            exit(1);
+                        }
+
+                        if (link(cached_fullname.c_str(), fullname.c_str()) < 0)
+                        {
+                            fprintf(stderr, "%s: unlink failed: %s\n",
+                                arg0, fullname.c_str());
+                            exit(1);
+                        }
+
+                        printf("+ created hard link\n");
+                    }
                 }
             }
             else
@@ -354,7 +384,7 @@ static int _search(Context& c, const string& path)
     return 0;
 }
 
-#define USAGE "Usage: %s [-m min-size] <dirname>...\n"
+#define USAGE "Usage: %s [-m min-size | -h] <dirname>...\n"
 
 int main(int argc, const char* argv[])
 {
@@ -365,7 +395,7 @@ int main(int argc, const char* argv[])
     Context c;
     int opt;
 
-    while ((opt = getopt(argc, (char**)argv, "m:")) != -1)
+    while ((opt = getopt(argc, (char**)argv, "hm:")) != -1)
     {
         switch (opt)
         {
@@ -406,6 +436,11 @@ int main(int argc, const char* argv[])
                     }
                 }
 
+                break;
+            }
+            case 'h':
+            {
+                _make_hard_links = true;
                 break;
             }
             default:
