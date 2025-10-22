@@ -354,7 +354,7 @@ static int _search(Context& c, const string& path)
     return 0;
 }
 
-#define USAGE "Usage: %s [-f min-size] <dirname>...\n"
+#define USAGE "Usage: %s [-m min-size] <dirname>...\n"
 
 int main(int argc, const char* argv[])
 {
