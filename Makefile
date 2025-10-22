@@ -9,6 +9,7 @@ clean:
 install:
 	mkdir -p $(HOME)/bin
 	cp dups $(HOME)/bin/dups
+	cp rmfiles $(HOME)/bin/rmfiles
 
 prereqs:
 	sudo apt install -y liblzma-dev
