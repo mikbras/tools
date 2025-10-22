@@ -9,7 +9,7 @@ using namespace std;
 
 const char* arg0;
 
-#define USAGE "Usage: %s rmfiles <filelist-filename>\n"
+#define USAGE "Usage: %s <filelist-filename>\n"
 
 int main(int argc, const char* argv[])
 {
