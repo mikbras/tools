@@ -266,6 +266,10 @@ static void _put_log_line(
 {
     fprintf(stream, "< %s\n", cached_fullname.c_str());
     fprintf(stream, "> %s\n", fullname.c_str());
+
+    if (_make_hard_links)
+        fprintf(stream, "+ Created hardlink\n");
+
     fprintf(stream, "%zu bytes\n\n", bytes);
     fflush(stream);
 }
@@ -338,8 +342,6 @@ static int _search(Context& c, const string& path)
                     _compare_files(cached_fullname, fullname) == 0)
                 {
                     c.bytes += size;
-                    _put_log_line(stdout, cached_fullname, fullname, c.bytes);
-                    _put_log_line(c.stream, cached_fullname, fullname, c.bytes);
 
                     if (_make_hard_links)
                     {
@@ -350,15 +352,18 @@ static int _search(Context& c, const string& path)
                             exit(1);
                         }
 
-                        if (link(cached_fullname.c_str(), fullname.c_str()) < 0)
+                        if (link(
+                            cached_fullname.c_str(), fullname.c_str()) < 0)
                         {
                             fprintf(stderr, "%s: unlink failed: %s\n",
                                 arg0, fullname.c_str());
                             exit(1);
                         }
-
-                        printf("+ created hard link\n");
                     }
+
+                    _put_log_line(stdout, cached_fullname, fullname, c.bytes);
+                    _put_log_line(
+                        c.stream, cached_fullname, fullname, c.bytes);
                 }
             }
             else
